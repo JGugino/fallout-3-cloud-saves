@@ -9,3 +9,6 @@ upload:
 
 sync:
 	@go run main.go sync
+
+build:
+	@go build -o ./bin/fcs
