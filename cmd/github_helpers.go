@@ -3,54 +3,65 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
-	"time"
+	"path"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v61/github"
 )
 
 func SyncNewestFileToDevice(config Config, client *github.Client) error {
 
-	commits, _, err := client.Repositories.ListCommits(context.Background(), config.CommiterName, config.RepoName, nil)
+	repo, _, err := client.Repositories.Get(context.Background(), config.CommiterName, config.RepoName)
 
 	if err != nil {
 		return err
 	}
 
-	var modTime time.Time
-	var shas []string
+	_, err = git.PlainClone("./tmp/fallout-saves", false, &git.CloneOptions{
+		Auth: &http.BasicAuth{
+			Username: config.CommiterName,
+			Password: config.GithubApiKey,
+		},
+		URL:      repo.GetCloneURL(),
+		Progress: os.Stdout,
+	})
 
-	for i := 0; i < len(commits); i++ {
-		commit := commits[i]
+	if err != nil {
+		repo, err := git.PlainOpen("./tmp/fallout-saves")
 
-		if !commit.Commit.Committer.Date.Before(modTime) {
-			if commit.Commit.Committer.Date.Time.After(modTime) {
-				modTime = commit.Commit.Committer.GetDate().Time
-				shas = shas[:0]
-			}
-			shas = append(shas, *commit.SHA)
+		if err != nil {
+			return err
 		}
+
+		workTree, err := repo.Worktree()
+		if err != nil {
+			return err
+		}
+
+		workTree.Pull(&git.PullOptions{
+			Auth: &http.BasicAuth{
+				Username: config.CommiterName,
+				Password: config.GithubApiKey,
+			},
+			RemoteName: "origin",
+		})
+
+		fmt.Println("Temp files updated")
 	}
 
-	commit, _, err := client.Repositories.GetCommit(context.Background(), config.CommiterName, config.RepoName, shas[0], nil)
+	if err == nil {
+		fmt.Println("Saves repo cloned to temp")
+	}
+
+	newestFile, err := GetNewestFiles("./tmp/fallout-saves")
 
 	if err != nil {
 		return err
 	}
 
-	resp, err := http.Get(commit.Files[0].GetRawURL())
-
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	fmt.Println(resp.Body)
-
-	// cmd := exec.Command("curl", "-O", "--header", "Authorization:", fmt.Sprintf("token %s", config.GithubApiKey))
-	// cmd.Run()
+	_, err = Copy(path.Join("./tmp/fallout-saves", newestFile[0]), path.Join(config.SaveLocation, newestFile[0]))
 
 	return err
 }

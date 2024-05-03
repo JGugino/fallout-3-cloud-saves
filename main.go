@@ -12,7 +12,7 @@ import (
 func main() {
 	if len(os.Args) <= 1 {
 		fmt.Println("You must enter a mode.")
-		fmt.Println("Usage: fcs {mode}")
+		fmt.Println("Usage: fcs {mode} - Modes: (init, upload, sync)")
 		os.Exit(0)
 	}
 
@@ -35,7 +35,12 @@ func main() {
 			Private: github.Bool(true),
 		}
 
-		client.Repositories.Create(context.Background(), "", savesRepo)
+		_, _, err = client.Repositories.Create(context.Background(), "", savesRepo)
+
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(0)
+		}
 
 		fmt.Println("Saves repo created")
 		os.Exit(0)
@@ -65,7 +70,10 @@ func main() {
 	if mode == "sync" {
 		err = cmd.SyncNewestFileToDevice(config, client)
 
-		fmt.Println(err)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(0)
+		}
 
 		fmt.Println("Newest save file has been synced")
 	}
