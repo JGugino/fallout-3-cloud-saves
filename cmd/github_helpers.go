@@ -104,7 +104,7 @@ func CommitNewestFile(config Config, client *github.Client) error {
 		return err
 	}
 
-	err = CreateNewFile(TMP_REPO_PATH, "newest.json", string(contents))
+	err = CreateNewFile(TMP_REPO_PATH, "/newest.json", string(contents))
 
 	if err != nil {
 		return err
