@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -11,6 +12,14 @@ import (
 	"github.com/google/go-github/v61/github"
 )
 
+const (
+	TMP_REPO_PATH = "./tmp/fallout-saves"
+)
+
+type NewestFile struct {
+	Name string `json:"name"`
+}
+
 func SyncNewestFileToDevice(config Config, client *github.Client) error {
 
 	repo, _, err := client.Repositories.Get(context.Background(), config.CommiterName, config.RepoName)
@@ -19,7 +28,17 @@ func SyncNewestFileToDevice(config Config, client *github.Client) error {
 		return err
 	}
 
-	_, err = git.PlainClone("./tmp/fallout-saves", false, &git.CloneOptions{
+	contents, err := ReadWholeFile(TMP_REPO_PATH, "newest.json")
+
+	if err != nil {
+		return err
+	}
+
+	var newestJson NewestFile
+
+	json.Unmarshal(contents, &newestJson)
+
+	_, err = git.PlainClone(TMP_REPO_PATH, false, &git.CloneOptions{
 		Auth: &http.BasicAuth{
 			Username: config.CommiterName,
 			Password: config.GithubApiKey,
@@ -29,7 +48,7 @@ func SyncNewestFileToDevice(config Config, client *github.Client) error {
 	})
 
 	if err != nil {
-		repo, err := git.PlainOpen("./tmp/fallout-saves")
+		repo, err := git.PlainOpen(TMP_REPO_PATH)
 
 		if err != nil {
 			return err
@@ -55,13 +74,7 @@ func SyncNewestFileToDevice(config Config, client *github.Client) error {
 		fmt.Println("Saves repo cloned to temp")
 	}
 
-	newestFile, err := GetNewestFiles("./tmp/fallout-saves")
-
-	if err != nil {
-		return err
-	}
-
-	_, err = Copy(path.Join("./tmp/fallout-saves", newestFile[0]), path.Join(config.SaveLocation, newestFile[0]))
+	_, err = Copy(path.Join(TMP_REPO_PATH, newestJson.Name), path.Join(config.SaveLocation, newestJson.Name))
 
 	return err
 }
@@ -74,58 +87,42 @@ func CommitNewestFile(config Config, client *github.Client) error {
 		os.Exit(0)
 	}
 
-	saveContents, err := ReadWholeFile(config.SaveLocation, "/"+newestFile[0])
+	_, err = Copy(path.Join(config.SaveLocation, newestFile[0]), path.Join(TMP_REPO_PATH, newestFile[0]))
 
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(0)
 	}
 
-	saveFile := &github.RepositoryContentFileOptions{
-		Message: github.String("Cloud Save Sync - Create"),
-		Committer: &github.CommitAuthor{
-			Name:  github.String(config.CommiterName),
-			Email: github.String(config.CommiterEmail),
+	newest := NewestFile{
+		Name: newestFile[0],
+	}
+
+	contents, err := json.Marshal(newest)
+
+	if err != nil {
+		return err
+	}
+
+	err = CreateNewFile(TMP_REPO_PATH, "newest.json", string(contents))
+
+	if err != nil {
+		return err
+	}
+
+	repo, err := git.PlainOpen(TMP_REPO_PATH)
+
+	if err != nil {
+		return err
+	}
+
+	err = repo.Push(&git.PushOptions{
+		Auth: &http.BasicAuth{
+			Username: config.CommiterName,
+			Password: config.GithubApiKey,
 		},
-		Content: saveContents,
-	}
-
-	_, _, err = client.Repositories.CreateFile(context.Background(), config.CommiterName, config.RepoName, newestFile[0], saveFile)
-
-	return err
-}
-
-func CommitUpdatedFile(config Config, client *github.Client) error {
-	newestFile, err := GetNewestFiles(config.SaveLocation)
-
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(0)
-	}
-
-	saveContents, err := ReadWholeFile(config.SaveLocation, "/"+newestFile[0])
-
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(0)
-	}
-
-	//TODO: Finish updating
-
-	commitInfo, _, _ := client.Repositories.ListCommits(context.Background(), config.CommiterName, config.RepoName, nil)
-
-	fmt.Println(commitInfo[0])
-
-	saveFile := &github.RepositoryContentFileOptions{
-		Message: github.String("Cloud Save Sync - Update"),
-		Committer: &github.CommitAuthor{
-			Name:  github.String(config.CommiterName),
-			Email: github.String(config.CommiterEmail),
-		},
-		Content: saveContents,
-	}
-
-	_, _, err = client.Repositories.UpdateFile(context.Background(), config.CommiterName, config.RepoName, newestFile[0], saveFile)
+		RemoteName: "origin",
+	})
 
 	return err
 }

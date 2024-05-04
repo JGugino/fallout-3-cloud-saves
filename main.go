@@ -50,16 +50,7 @@ func main() {
 		err = cmd.CommitNewestFile(config, client)
 
 		if err != nil {
-
-			//TODO: FINISH UPDATING
-			err = cmd.CommitUpdatedFile(config, client)
-
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(0)
-			}
-
-			fmt.Println("Save file updated")
+			fmt.Println(err)
 			os.Exit(0)
 		}
 
