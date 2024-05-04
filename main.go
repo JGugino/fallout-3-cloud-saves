@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/JGugino/fallout-3-cloud-saves/cmd"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v61/github"
 )
 
@@ -29,13 +31,27 @@ func main() {
 	// create github API client
 	client := github.NewClient(nil).WithAuthToken(config.GithubApiKey)
 
+	// ### MODE - INIT ###
 	if mode == "init" {
 		savesRepo := &github.Repository{
 			Name:    github.String(config.RepoName),
 			Private: github.Bool(true),
 		}
 
-		_, _, err = client.Repositories.Create(context.Background(), "", savesRepo)
+		repo, _, err := client.Repositories.Get(context.Background(), config.CommiterName, config.RepoName)
+
+		if err != nil {
+			repo, _, _ = client.Repositories.Create(context.Background(), "", savesRepo)
+		}
+
+		_, err = git.PlainClone(cmd.TMP_REPO_PATH, false, &git.CloneOptions{
+			Auth: &http.BasicAuth{
+				Username: config.CommiterName,
+				Password: config.GithubApiKey,
+			},
+			URL:      repo.GetCloneURL(),
+			Progress: os.Stdout,
+		})
 
 		if err != nil {
 			fmt.Println(err)
@@ -46,6 +62,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	// ### MODE - UPLOAD ###
 	if mode == "upload" {
 		err = cmd.CommitNewestFile(config, client)
 
@@ -58,6 +75,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	// ### MODE - SYNC ###
 	if mode == "sync" {
 		err = cmd.SyncNewestFileToDevice(config, client)
 

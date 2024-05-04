@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v61/github"
 )
@@ -28,7 +30,7 @@ func SyncNewestFileToDevice(config Config, client *github.Client) error {
 		return err
 	}
 
-	contents, err := ReadWholeFile(TMP_REPO_PATH, "newest.json")
+	contents, err := ReadWholeFile(TMP_REPO_PATH, "/newest.json")
 
 	if err != nil {
 		return err
@@ -116,12 +118,35 @@ func CommitNewestFile(config Config, client *github.Client) error {
 		return err
 	}
 
+	workTree, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	commit, err := workTree.Commit(fmt.Sprintf("Cloud Save Upload - %s", newest.Name), &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  config.CommiterName,
+			Email: config.CommiterEmail,
+			When:  time.Now(),
+		},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	_, err = repo.CommitObject(commit)
+
+	if err != nil {
+		return err
+	}
+
 	err = repo.Push(&git.PushOptions{
+		Progress: os.Stdout,
 		Auth: &http.BasicAuth{
 			Username: config.CommiterName,
 			Password: config.GithubApiKey,
 		},
-		RemoteName: "origin",
 	})
 
 	return err
